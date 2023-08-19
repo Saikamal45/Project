@@ -21,12 +21,12 @@
             <td><input type="file"  ref="fileinput"  accept="image/*" required @change="handleFileChange"></td>
           </tr>
           <tr>
-            <td><button @click="uploadImage" class="sub" :disabled="isUploading">Upload</button></td>
+            <td> <button @click.prevent="uploadImage" class="sub" :disabled="isUploading">Upload</button></td>
           </tr>
         </table>
       </form>
       <div v-if="isUploading" class="loading-spinner"></div>
-      <p v-if="uploadMessage" class="upload-message">{{ uploadMessage }}</p>
+      <p v-if="uploadMessage && !uploadMessageShown" class="upload-message">{{ uploadMessage }}</p>
     </div>
   </div>
 
@@ -45,21 +45,12 @@
   </div>
      
      <!--Image Gallery-->
+     <div class="imagegallery">
      <h1 id="subheading">Image Gallery</h1>
-  <div class="images">
-    <div class="div1"><img src="https://i.pinimg.com/736x/db/64/7a/db647ad822ad35463f3fa3edd43f8860.jpg"><h2>Tiger</h2></div>
-    <div class="div1"><img src="https://i.pinimg.com/564x/e2/6c/ef/e26cef33bbbf679b217d5179c335f3d5.jpg"><h2>Lion</h2></div>
-    <div class="div1"><img src="https://i.pinimg.com/564x/2a/5a/12/2a5a12e638977ca527f6a48c9762fd59.jpg"><h2>Cheetah</h2></div>
+  <div v-for="(image, index) in sortedImages" :key="index">
+    <img :src="getImageUrl(image.filePath)" :alt="image.tagname" :class="{ 'latest-image': index === 0 }">
+    <h2>{{ image.tagname }}</h2>
   </div>
-  <div class="images">
-    <div class="div1"><img src="https://i.pinimg.com/564x/bd/76/d8/bd76d85353ff83e6c5bcc1f3f22e6b9c.jpg"><h2>Rohit</h2></div>
-    <div class="div1"><img src="https://i.pinimg.com/564x/ed/9a/aa/ed9aaa354f5b714acb270be340725d1c.jpg"><h2>Kohli</h2></div>
-    <div class="div1"><img src="https://i.pinimg.com/564x/f4/44/99/f44499a54030b5631d194314c7a7a102.jpg"><h2>Surya</h2></div>
-  </div>
-  <div class="images">
-    <div class="div1"><img src="https://i.pinimg.com/564x/29/bf/14/29bf14989cdc63b290cbc612c9533863.jpg"><h2>Prabhas</h2></div>
-    <div class="div1"><img src="https://i.pinimg.com/564x/2a/07/69/2a076903fb9f3a5b8cf7f9bfa5d1f6c4.jpg"><h2>RaviTeja</h2></div>
-    <div class="div1"><img src="https://i.pinimg.com/564x/e8/93/07/e893079f6c0029018f143c0eff8a7aed.jpg"><h2>Dhanush</h2></div>
   </div>
      <!-- Search Results Modal -->
 <div class="modal" id="searchResultsModal">
@@ -79,7 +70,6 @@
 <script>
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
-
 export default {
   data() {
     return {
@@ -92,9 +82,27 @@ export default {
       searchResultsFetched: false,
       searchTag: '',
       searchResults: [],
+      uploadedImages: [],
       baseUrl: 'http://localhost:3000',
       showSearchResultsModal: false, 
+      uploadMessageShown:false,
+      latestImage:{}
     };
+  },
+  computed: {
+  sortedImages() {
+    const allImages = [...this.uploadedImages];
+
+    const sorted = allImages.slice().sort((a, b) => {
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    return sorted.reverse();
+  },
+},
+
+  mounted() {
+    this.fetchImages(); // Fetch images when the component is mounted
   },
   setup() {
    
@@ -106,13 +114,19 @@ export default {
           this.selectedFile.value = file;
         });
       }
-    })
+    });
   },
+  
   methods: {
     openModal(modalId) {
       if (modalId === 'uploadimage') {
         this.showUploadModal = true;
         document.getElementById('uploadimage').style.display = 'block';
+        if (this.uploadMessageShown) {
+      this.uploadMessageShown = false; // Reset the flag
+    } else {
+      this.uploadMessage = ''; // Clear the upload message
+    }
       } else if (modalId === 'searchimage') {
         this.showSearchModal = true;
         document.getElementById('searchimage').style.display = 'block';
@@ -140,10 +154,12 @@ export default {
     handleFileChange(event) {
       this.selectedFile = event.target.files[0];
     },
+    
     getImageUrl(filePath) {
       const filename = filePath.split('/').pop();
       return `${this.baseUrl}/Files/${filename}`;
     },
+    
     async uploadImage() {
       try {
         if (!this.selectedFile) {
@@ -156,44 +172,55 @@ export default {
         formData.append('tagname', this.uploadTag);
         formData.append('fileName', this.selectedFile.name);
         formData.append('filePath', this.selectedFile.name);
-
+        console.log('Sending request to', `${this.baseUrl}/upload`);
         const response = await fetch(`${this.baseUrl}/upload`, {
           method: 'POST',
           body: formData,
         });
-
+        console.log('Response:', response);
     if (response.ok) {
       console.log('Image uploaded successfully');
       this.uploadTag = '';
       this.selectedFile = null;
       this.uploadMessage = 'Image uploaded successfully.';
+      this.uploadMessageShown = true;
+      this.fetchImages();
       this.closeModal('uploadimage');
       this.openModal('uploadimage');
-  
     } else {
       console.error('Image upload failed');
       this.uploadMessage = 'Failed to upload image.';
+      this.uploadMessageShown = true;
     }
   } catch (error) {
     console.error('An error occurred during image upload:', error);
-    this.uploadMessage = 'Failed to upload image. Status code: ' + error.response.status;
+    this.uploadMessage ='Failed to upload image.';
+    this.uploadMessageShown = true;
   }
   finally {
     this.isUploading = false; // Clear the loading state
   }
 },
+async fetchImages() {
+  try {
+    const response = await axios.get(`${this.baseUrl}/get`);
+    this.uploadedImages = response.data;
 
+    // Set the latest image after fetching images
+    if (this.uploadedImages.length > 0) {
+          this.latestImage = this.sortedImages[0];
+        }
+  } catch (error) {
+    console.error('An error occurred while fetching images:', error);
+  }
+},
     async searchImages() {
-
-      console.log('enter api func');
       try {
-        console.log('enter api func');
         const response = await axios.get(`${this.baseUrl}/search/tags`, {
           params: { tags: this.searchTag },
         });
         console.log('Response:', response); 
         if (response.status === 200) {
-          event.preventDefault(); 
           this.searchResults = response.data;
           this.searchResultsFetched = true;
           this.closeModal('searchimage');
@@ -255,26 +282,6 @@ body{
     position: relative;
     left:520px;
     top:23px;
-  }
-  .images
-  {
-    display: flex;
-    flex-wrap: wrap;
-    width: 100%;
-    justify-content: space-around;
-    margin: 50px 0;
-    position:relative;
-    top:70px;
-  }
- .div1
-  {
-    box-sizing: border-box;
-    margin: 10px;
-  }
-  img{
-height:250px;
-width:400px;
-border-radius:8%;
   }
   h2{
     text-align: center;
@@ -367,9 +374,8 @@ span:hover{
   margin-top: 0;
 }
 
-/* Style for the modal body */
 #searchResultsModal .modal-content .modal-body {
-  padding: 20px; /* Adjust as needed */
+  padding: 20px; 
 }
 
 #searchResultsModal .Resultimages {
@@ -423,4 +429,42 @@ span:hover{
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
+  /* Styles for the image gallery */
+.imagegallery {
+  text-align: center;
+  margin-top: 40px;
+  position:absolute;
+  top:100px;
+}
+
+
+#subheading {
+  font-size: 24px;
+  margin-bottom: 20px;
+  position:relative;
+  top:0px;
+}
+
+.imagegallery div {
+  display: inline-block;
+  margin: 10px;
+  text-align: center;
+  vertical-align: top;
+  width: calc(33.33% - 20px);
+  box-sizing: border-box;
+}
+
+
+.imagegallery img {
+  width: 100%;
+  height:60vh;
+  border-radius: 8%;
+  border: 2px solid #ccc;
+}
+
+.latest-image {
+  border: 2px solid #3498db;
+}
+
+
 </style>

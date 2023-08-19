@@ -9,10 +9,15 @@ const app=express();
 app.use(cors());
 
 router.get("/get", async (req, res) => {
-  const allPhotos = await Image.find();
-  allPhotos.reverse();
-  res.send(allPhotos);
+  try {
+    const allPhotos = await Image.find().sort({ createdAt:-1 });
+    res.send(allPhotos);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Failed to fetch images.' });
+  }
 });
+
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     const image = new Image({
